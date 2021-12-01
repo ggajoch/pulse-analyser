@@ -114,6 +114,9 @@ def analyze_file(filename):
 
     p_count = 1
     pulses_widths = []
+    squared_polygon = []
+    squared_polygon.append([time[0]*1e-6, 0])
+
     for p_c in range(len(pulses)):
         p = pulses[p_c]
         # print(f"Found pulse indexes {p[0]} to {p[-1]}")
@@ -131,6 +134,11 @@ def analyze_file(filename):
         rect = mpatches.Rectangle((1e-6*time[p[0]], 0), 1e-6*(time[p[-1]]-time[p[0]]), impulse_max_value, color='gray', fill=True)
         plt.gca().add_patch(rect)
 
+        squared_polygon.append([1e-6*time[p[0]-1], 0])
+        squared_polygon.append([1e-6*time[p[0]], impulse_max_value])
+        squared_polygon.append([1e-6*time[p[-1]], impulse_max_value])
+        squared_polygon.append([1e-6*time[p[-1]+1], 0])
+
         row = dict()
         row['Filename'] = filename
         row['Pulse Index'] = p_count
@@ -147,6 +155,10 @@ def analyze_file(filename):
         pulses_widths.append(impulse_time)
 
         p_count += 1
+
+    squared_polygon.append([time[-1]*1e-6, 0])
+    _poly = mpatches.Polygon(squared_polygon, closed=False, color='red', fill=None, lw=5)
+    plt.gca().add_patch(_poly)
 
     plt.grid(True)
     plt.savefig(os.path.join(output_images_dir, filename + '.png'))
