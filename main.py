@@ -1,13 +1,17 @@
 from re import T
 
 
-threshold_low = -0.21
-threshold_high = 0.21
+threshold_low = 0.6
+threshold_high = 2
 output_dir = "output"
+output_images_dir = "output_images"
+output_filename = "output.csv"
+
+show_image_before_save = True
 
 enable_filter = False
 filter_window = 99
-filter_poly_order = 3
+filter_poly_order = 1
 show_raw = True
 
 import pandas as pd
@@ -17,6 +21,7 @@ from matplotlib import pyplot as plt
 import matplotlib.patches as mpatches
 import glob
 import os
+import csv
 import pathlib
 from scipy.signal import savgol_filter
 
@@ -33,6 +38,22 @@ def consecutive(data, stepsize=1):
         return np.split(data, np.where(np.diff(data) != stepsize)[0]+1)
 
 
+
+
+pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True) 
+pathlib.Path(output_images_dir).mkdir(parents=True, exist_ok=True) 
+
+csvfile = open(os.path.join(output_dir, output_filename), 'w', newline='')
+fieldnames = ['Filename',
+              'Pulse Index',
+              'Max Value [V]',
+              'Integrated pulse area [V*us]',
+              'Square pulse area [V*us]',
+              'Pulse duration [us]']
+writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+writer.writeheader()
+
+
 def analyze_file(filename):
     print("Analyzing file: " + filename)
 
@@ -46,26 +67,11 @@ def analyze_file(filename):
     time = []
     volts_raw = []
     if first.find('_time(s)') != -1: # easyscope format
-        raise NotImplementedError("Easyscope format not yet supported")
-        for line in file_handle:
-            table = line.strip().split(',')
-            # assume that the second column has always one comma (separator)
-            columns_for_time = 2
-            if table[0].find('E') != -1:
-                columns_for_time = 1
-
-            t = float(eval('.'.join(table[0:columns_for_time])))
-            v = float('.'.join(table[columns_for_time:]))
-            # print(t, v)
-            time.append(t*1e6)
-            volts_raw.append(v)
-            if v == 74:
-                print(t, v)
-                print(table)
-                print(line)
-                exit(1)
-        time = np.array(time)
-        volts_raw = np.array(volts_raw)
+        columns = ["ch1_time(s)", "ch1_value(V)"]
+        df = pd.read_csv(filename, usecols=columns)
+        x = df.to_numpy()
+        time, volts_raw = x.transpose()
+        time = 1e6*time # in us
     else:
         # normal format
         columns = ["Time", "Volt"]
@@ -74,6 +80,8 @@ def analyze_file(filename):
         time, volts_raw = x.transpose()
         time = 1e6*time # in us
 
+    minimal_value = volts_raw.min()
+    volts_raw -= minimal_value
     
     dt = time[1] - time[0]
 
@@ -104,18 +112,6 @@ def analyze_file(filename):
 
     print(f"Found {len(pulses)} pulses:")
 
-    import csv
-
-    csvfile = open(os.path.join(output_dir, filename), 'w', newline='')
-    fieldnames = ['Pulse Index',
-                  'Max Value [V]',
-                  'Integrated pulse area [V*us]',
-                  'Square pulse area [V*us]',
-                  'Pulse duration [us]']
-    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
-    writer.writeheader()
-
     p_count = 1
     pulses_widths = []
     for p_c in range(len(pulses)):
@@ -131,18 +127,19 @@ def analyze_file(filename):
         sum = np.sum(array_y) * dt
 
         print(f'width: {impulse_time} us, max: {impulse_max_value} V, sq: {square_value} us*V, sum: {sum} us*V')
-        # plt.plot(array_x, array_y)
 
         rect = mpatches.Rectangle((1e-6*time[p[0]], 0), 1e-6*(time[p[-1]]-time[p[0]]), impulse_max_value, color='gray', fill=True)
         plt.gca().add_patch(rect)
 
         row = dict()
+        row['Filename'] = filename
         row['Pulse Index'] = p_count
         row['Max Value [V]'] = impulse_max_value
         row['Integrated pulse area [V*us]'] = sum
         row['Square pulse area [V*us]'] = square_value
         row['Pulse duration [us]'] = impulse_time
         writer.writerow(row)
+        csvfile.flush()
 
         if p_c != len(pulses) - 1:
             print(f"Next impulse in {time[pulses[p_c+1][0]] - time[pulses[p_c][-1]]}us")
@@ -151,22 +148,24 @@ def analyze_file(filename):
 
         p_count += 1
 
-    csvfile.close()
+    plt.grid(True)
+    plt.savefig(os.path.join(output_images_dir, filename + '.png'))
+    
+    if not show_image_before_save:
+        plt.close()
 
     plt.figure(1)
     plt.hist(pulses_widths)
-    plt.figure(0)
 
     # plt.plot(squared)
     # plt.plot(volts)
     # plt.plot(signal_blanked)
-    plt.grid(True)
+
     plt.show()
 
 
 
-pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True) 
-
 all_csvs = glob.glob('*.CSV')
 for csv in all_csvs:
     analyze_file(csv)
+csvfile.close()
