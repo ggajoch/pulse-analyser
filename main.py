@@ -1,13 +1,11 @@
-from re import T
-
-
-threshold_low = 0.6
-threshold_high = 2
+threshold_low = 0.2
+threshold_high = 0.9
 output_dir = "output"
 output_images_dir = "output_images"
 output_filename = "output.csv"
 
 show_image_before_save = True
+show_histogram = True
 
 enable_filter = False
 filter_window = 99
@@ -53,6 +51,7 @@ fieldnames = ['Filename',
 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 writer.writeheader()
 
+pulses_widths = []
 
 def analyze_file(filename):
     print("Analyzing file: " + filename)
@@ -99,6 +98,15 @@ def analyze_file(filename):
     nonzero_indexes = squared.nonzero()[0]
     pulses = consecutive(nonzero_indexes)
 
+    plt.plot(1e-6*time, volts)
+    plt.ticklabel_format(axis="x", style="sci", scilimits=(0,0))
+
+    if len(nonzero_indexes) == 0:
+        print("No pulses found!!")
+        plt.text(1e-6*time[0], volts.max()/2, "No pulses found", fontsize=60, color="red")
+        plt.show()
+        return
+
     # if last pulse is not finished
     if nonzero_indexes[-1] == len(volts) - 1:
         pulses.pop()
@@ -107,13 +115,10 @@ def analyze_file(filename):
 
     # plt.plot(time, squared)
     # plt.plot(time, signal_blanked)
-    plt.plot(1e-6*time, volts)
-    plt.ticklabel_format(axis="x", style="sci", scilimits=(0,0))
 
     print(f"Found {len(pulses)} pulses:")
 
     p_count = 1
-    pulses_widths = []
     squared_polygon = []
     squared_polygon.append([time[0]*1e-6, 0])
 
@@ -165,19 +170,15 @@ def analyze_file(filename):
     
     if not show_image_before_save:
         plt.close()
-
-    plt.figure(1)
-    plt.hist(pulses_widths)
-
-    # plt.plot(squared)
-    # plt.plot(volts)
-    # plt.plot(signal_blanked)
-
-    plt.show()
-
-
+    else:
+        plt.show()
 
 all_csvs = glob.glob('*.CSV')
 for csv in all_csvs:
     analyze_file(csv)
 csvfile.close()
+
+if show_histogram:
+    plt.figure(1)
+    plt.hist(pulses_widths)
+    plt.show()
