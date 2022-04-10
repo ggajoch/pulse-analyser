@@ -7,7 +7,10 @@ output_filename = "output.csv"
 show_image_before_save = True
 show_histogram = True
 
-enable_filter = False
+filter = 'none'
+filter = 'sav-gol'
+filter = 'bessel'
+bessel_filter_cutoff = 160000
 filter_window = 99
 filter_poly_order = 1
 show_raw = True
@@ -21,7 +24,7 @@ import glob
 import os
 import csv
 import pathlib
-from scipy.signal import savgol_filter
+from scipy.signal import savgol_filter, bessel, lfilter_zi, lfilter
 
 def hyst(x, th_lo, th_hi, initial = False):
     hi = x >= th_hi
@@ -84,12 +87,20 @@ def analyze_file(filename):
     
     dt = time[1] - time[0]
 
-    if enable_filter:
+    if filter == 'sav-gol':
         if show_raw:
             plt.plot(1e-6*time, volts_raw, label="Raw")
 
         # Savitzky-Golay filter
         volts = savgol_filter(volts_raw, filter_window, filter_poly_order)
+    elif filter == 'bessel':
+        if show_raw:
+            plt.plot(1e-6*time, volts_raw, label="Raw")
+
+        # Bessel filter
+        b, a = bessel(8, 2*bessel_filter_cutoff*dt*1e-6, 'low', analog=False, norm='phase')
+        zi = lfilter_zi(b, a)
+        volts, _ = lfilter(b, a, volts_raw, zi=zi*volts_raw[0])
     else:
         volts = volts_raw
 
