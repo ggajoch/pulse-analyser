@@ -5,11 +5,9 @@ output_images_dir = "output_images"
 output_filename = "output.csv"
 
 show_image_before_save = True
-show_histogram = True
+show_histogram = False
 
-filter = 'none'
-filter = 'sav-gol'
-filter = 'bessel'
+filter = 'bessel' # possible values: 'bessel', 'sav-gol' or 'none
 bessel_filter_cutoff = 160000
 filter_window = 99
 filter_poly_order = 1
@@ -50,7 +48,8 @@ fieldnames = ['Filename',
               'Max Value [V]',
               'Integrated pulse area [V*us]',
               'Square pulse area [V*us]',
-              'Pulse duration [us]']
+              'Pulse duration [us]',
+              'Covariance']
 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 writer.writeheader()
 
@@ -138,6 +137,7 @@ def analyze_file(filename):
         # print(f"Found pulse indexes {p[0]} to {p[-1]}")
         array_x = time[p[0]:p[-1]]
         array_y = signal_blanked[p[0]:p[-1]]
+        array_raw = volts_raw[p[0]:p[-1]]
 
         impulse_max_value = np.max(array_y)
         impulse_time = dt*(p[-1] - p[0]) # us
@@ -155,6 +155,11 @@ def analyze_file(filename):
         squared_polygon.append([1e-6*time[p[-1]], impulse_max_value])
         squared_polygon.append([1e-6*time[p[-1]+1], 0])
 
+        # covariance
+        # find out covariance with respect  columns
+        cov_mat = np.stack((array_y, array_raw), axis = 0)
+        covariance = np.cov(cov_mat)[0][1]
+
         row = dict()
         row['Filename'] = filename
         row['Pulse Index'] = p_count
@@ -162,6 +167,7 @@ def analyze_file(filename):
         row['Integrated pulse area [V*us]'] = sum
         row['Square pulse area [V*us]'] = square_value
         row['Pulse duration [us]'] = impulse_time
+        row['Covariance'] = covariance
         writer.writerow(row)
         csvfile.flush()
 
