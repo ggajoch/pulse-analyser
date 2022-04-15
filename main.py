@@ -7,10 +7,10 @@ output_filename = "output.csv"
 show_image_before_save = True
 show_histogram = False
 
-filter = 'bessel' # possible values: 'bessel', 'sav-gol' or 'none
-bessel_filter_cutoff = 160000
-filter_window = 99
-filter_poly_order = 1
+filter = 'bessel' # possible values: 'bessel', 'sav-gol' or 'none'
+bessel_filter_cutoff = 16000
+sav_gol_filter_window = 99
+sav_gol_filter_poly_order = 1
 show_raw = True
 
 import pandas as pd
@@ -22,7 +22,7 @@ import glob
 import os
 import csv
 import pathlib
-from scipy.signal import savgol_filter, bessel, lfilter_zi, lfilter
+from scipy.signal import savgol_filter, bessel, lfilter_zi, lfilter, filtfilt
 
 def hyst(x, th_lo, th_hi, initial = False):
     hi = x >= th_hi
@@ -91,15 +91,18 @@ def analyze_file(filename):
             plt.plot(1e-6*time, volts_raw, label="Raw")
 
         # Savitzky-Golay filter
-        volts = savgol_filter(volts_raw, filter_window, filter_poly_order)
+        volts = savgol_filter(volts_raw, sav_gol_filter_window, sav_gol_filter_poly_order)
     elif filter == 'bessel':
         if show_raw:
             plt.plot(1e-6*time, volts_raw, label="Raw")
 
         # Bessel filter
-        b, a = bessel(8, 2*bessel_filter_cutoff*dt*1e-6, 'low', analog=False, norm='phase')
+        nyq = 0.5 / (dt * 1e-6)
+        high = bessel_filter_cutoff / nyq
+        b, a = bessel(4, high, 'low', analog=False, norm='delay')
         zi = lfilter_zi(b, a)
         volts, _ = lfilter(b, a, volts_raw, zi=zi*volts_raw[0])
+        volts = filtfilt(b, a, volts)
     else:
         volts = volts_raw
 
@@ -136,7 +139,7 @@ def analyze_file(filename):
         p = pulses[p_c]
         # print(f"Found pulse indexes {p[0]} to {p[-1]}")
         array_x = time[p[0]:p[-1]]
-        array_y = signal_blanked[p[0]:p[-1]]
+        array_y = volts[p[0]:p[-1]]
         array_raw = volts_raw[p[0]:p[-1]]
 
         impulse_max_value = np.max(array_y)
@@ -157,8 +160,11 @@ def analyze_file(filename):
 
         # covariance
         # find out covariance with respect  columns
-        cov_mat = np.stack((array_y, array_raw), axis = 0)
-        covariance = np.cov(cov_mat)[0][1]
+        if filter == 'none':
+            covariance = 0
+        else:
+            cov_mat = np.stack((array_y, array_raw), axis = 0)
+            covariance = np.cov(cov_mat)[0][1]
 
         row = dict()
         row['Filename'] = filename
